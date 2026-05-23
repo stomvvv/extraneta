@@ -22,7 +22,11 @@ if database_url.startswith("postgresql://"):
 elif database_url.startswith("postgres://"):
     database_url = database_url.replace("postgres://", "postgresql+asyncpg://", 1)
 if not database_url:
-    raise RuntimeError("No database URL found. Set DATABASE_URL environment variable.")
+    # Don't crash — just warn. The server will still start; DB calls will fail
+    # on first request, which is logged and easier to debug than a boot loop.
+    import sys
+    print("WARNING: No database URL found — skipping migrations. Set DATABASE_URL.", file=sys.stderr)
+    sys.exit(0)
 config.set_main_option("sqlalchemy.url", database_url)
 
 from app.core.database import Base

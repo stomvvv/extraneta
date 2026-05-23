@@ -22,8 +22,22 @@ def _get_database_url() -> str:
 class Settings(BaseSettings):
     ENVIRONMENT: str = "development"
 
-    # Database — Railway provides DATABASE_URL or DATABASE_PRIVATE_URL
+    # Database — Railway provides DATABASE_URL or DATABASE_PRIVATE_URL.
+    # pydantic-settings overrides the default with the raw env var value, so we
+    # use a field_validator to ensure the asyncpg scheme is always present.
     DATABASE_URL: str = _get_database_url()
+
+    @field_validator("DATABASE_URL", mode="before")
+    @classmethod
+    def fix_database_url(cls, v: str) -> str:
+        """Convert postgresql:// / postgres:// to postgresql+asyncpg:// as required by asyncpg."""
+        if isinstance(v, str):
+            if v.startswith("postgresql://"):
+                return v.replace("postgresql://", "postgresql+asyncpg://", 1)
+            if v.startswith("postgres://"):
+                return v.replace("postgres://", "postgresql+asyncpg://", 1)
+        return v or _get_database_url()
+
     POSTGRES_HOST: str = "db"
     POSTGRES_PORT: int = 5432
     POSTGRES_DB: str = "extraneta"
