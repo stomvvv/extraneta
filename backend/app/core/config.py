@@ -45,8 +45,8 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     REFRESH_TOKEN_EXPIRE_DAYS: int = 30
 
-    # CORS
-    BACKEND_CORS_ORIGINS: Union[List[str], str] = []
+    # CORS — default open; set BACKEND_CORS_ORIGINS to restrict in production
+    BACKEND_CORS_ORIGINS: Union[List[str], str] = ["*"]
 
     @field_validator("BACKEND_CORS_ORIGINS", mode="before")
     @classmethod

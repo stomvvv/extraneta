@@ -4,7 +4,11 @@ import type {
   OTASource, DocumentType, UserRole,
 } from "@/types";
 
-const BASE_URL = "/api";
+// VITE_BACKEND_URL is baked in at build time (set in Railway frontend build vars).
+// Falls back to relative /api which nginx proxies to the backend.
+const BASE_URL = import.meta.env.VITE_BACKEND_URL
+  ? `${import.meta.env.VITE_BACKEND_URL}/api`
+  : "/api";
 
 class ApiError extends Error {
   constructor(public status: number, message: string) {
