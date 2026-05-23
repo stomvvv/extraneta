@@ -4,11 +4,14 @@ import type {
   OTASource, DocumentType, UserRole,
 } from "@/types";
 
-// VITE_BACKEND_URL is baked in at build time (set in Railway frontend build vars).
-// Falls back to relative /api which nginx proxies to the backend.
+// VITE_BACKEND_URL is baked in at build time via Railway build vars.
+// Falls back to the known production URL, then to relative /api for local dev.
+const PRODUCTION_BACKEND = "https://extraneta-backend-production.up.railway.app";
 const BASE_URL = import.meta.env.VITE_BACKEND_URL
   ? `${import.meta.env.VITE_BACKEND_URL}/api`
-  : "/api";
+  : import.meta.env.DEV
+    ? "/api"
+    : `${PRODUCTION_BACKEND}/api`;
 
 class ApiError extends Error {
   constructor(public status: number, message: string) {
