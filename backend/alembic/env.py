@@ -10,7 +10,19 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-database_url = os.getenv("DATABASE_URL", "")
+database_url = (
+    os.getenv("DATABASE_URL")
+    or os.getenv("DATABASE_PRIVATE_URL")
+    or os.getenv("POSTGRESQL_URL")
+    or ""
+)
+# Railway (and most providers) give postgresql:// — asyncpg needs postgresql+asyncpg://
+if database_url.startswith("postgresql://"):
+    database_url = database_url.replace("postgresql://", "postgresql+asyncpg://", 1)
+elif database_url.startswith("postgres://"):
+    database_url = database_url.replace("postgres://", "postgresql+asyncpg://", 1)
+if not database_url:
+    raise RuntimeError("No database URL found. Set DATABASE_URL environment variable.")
 config.set_main_option("sqlalchemy.url", database_url)
 
 from app.core.database import Base

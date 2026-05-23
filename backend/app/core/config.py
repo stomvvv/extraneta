@@ -2,13 +2,28 @@ from pydantic_settings import BaseSettings
 from pydantic import AnyHttpUrl, field_validator
 from typing import List, Union
 import json
+import os
+
+
+def _get_database_url() -> str:
+    url = (
+        os.getenv("DATABASE_URL")
+        or os.getenv("DATABASE_PRIVATE_URL")
+        or os.getenv("POSTGRESQL_URL")
+        or ""
+    )
+    if url.startswith("postgresql://"):
+        url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
+    elif url.startswith("postgres://"):
+        url = url.replace("postgres://", "postgresql+asyncpg://", 1)
+    return url
 
 
 class Settings(BaseSettings):
     ENVIRONMENT: str = "development"
 
-    # Database
-    DATABASE_URL: str
+    # Database — Railway provides DATABASE_URL or DATABASE_PRIVATE_URL
+    DATABASE_URL: str = _get_database_url()
     POSTGRES_HOST: str = "db"
     POSTGRES_PORT: int = 5432
     POSTGRES_DB: str = "extraneta"
