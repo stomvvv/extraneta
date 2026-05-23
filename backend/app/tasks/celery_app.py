@@ -1,10 +1,18 @@
+import os
 from celery import Celery
-from app.core.config import settings
+
+# Railway provides Redis URL as REDIS_URL. Fall back to local Docker service name.
+_redis_url = os.environ.get("REDIS_URL", "redis://redis:6379/0")
+if not _redis_url.startswith("redis"):
+    raise RuntimeError(
+        f"REDIS_URL must be a Redis URL (got: {_redis_url!r}). "
+        "Set REDIS_URL to your Redis connection string on Railway."
+    )
 
 celery_app = Celery(
     "extraneta",
-    broker=settings.REDIS_URL,
-    backend=settings.REDIS_URL,
+    broker=_redis_url,
+    backend=_redis_url,
     include=["app.tasks.parse_upload"],
 )
 
