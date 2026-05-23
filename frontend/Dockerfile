@@ -13,7 +13,7 @@ CMD ["npm", "run", "dev"]
 FROM base AS builder
 RUN npm install
 COPY . .
-RUN npm run build
+RUN npx vite build
 
 # Production stage
 FROM nginx:alpine AS production
