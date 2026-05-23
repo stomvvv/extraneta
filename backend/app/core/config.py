@@ -41,7 +41,7 @@ class Settings(BaseSettings):
     MINIO_SECURE: bool = False
 
     # Auth
-    SECRET_KEY: str
+    SECRET_KEY: str = "change-me-in-production-please"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     REFRESH_TOKEN_EXPIRE_DAYS: int = 30
 
