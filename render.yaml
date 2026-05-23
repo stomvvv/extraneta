@@ -1,0 +1,74 @@
+services:
+  - type: web
+    name: extraneta-backend
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: extraneta-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          name: extraneta-redis
+          type: redis
+          property: connectionString
+      - key: SECRET_KEY
+        generateValue: true
+      - key: ENVIRONMENT
+        value: production
+      - key: MINIO_ENDPOINT
+        sync: false
+      - key: MINIO_ACCESS_KEY
+        sync: false
+      - key: MINIO_SECRET_KEY
+        sync: false
+      - key: MINIO_BUCKET
+        value: extraneta-uploads
+      - key: MINIO_SECURE
+        value: "true"
+      - key: FRONTEND_URL
+        sync: false
+
+  - type: worker
+    name: extraneta-worker
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    startCommand: celery -A app.tasks.celery_app worker --loglevel=info --concurrency=2
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: extraneta-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          name: extraneta-redis
+          type: redis
+          property: connectionString
+      - key: SECRET_KEY
+        fromService:
+          name: extraneta-backend
+          type: web
+          envVarKey: SECRET_KEY
+      - key: MINIO_ENDPOINT
+        sync: false
+      - key: MINIO_ACCESS_KEY
+        sync: false
+      - key: MINIO_SECRET_KEY
+        sync: false
+      - key: MINIO_BUCKET
+        value: extraneta-uploads
+      - key: MINIO_SECURE
+        value: "true"
+
+databases:
+  - name: extraneta-db
+    plan: free
+    databaseName: extraneta
+    user: extraneta
+
+  - name: extraneta-redis
+    plan: free
+    ipAllowList: []
