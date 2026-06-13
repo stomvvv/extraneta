@@ -1,17 +1,9 @@
 import type {
-  Hotel, HotelMember, Booking, BookingListResponse,
-  SummaryMetrics, ChannelMetrics, TimeSeriesPoint, AnomalySummary, Upload,
-  OTASource, DocumentType, UserRole,
+  Hotel, Booking, BookingListResponse, DashboardData,
+  ChannelMetrics, Upload, CommissionSetting,
 } from "@/types";
 
-// VITE_BACKEND_URL is baked in at build time via Railway build vars.
-// Falls back to the known production URL, then to relative /api for local dev.
-const PRODUCTION_BACKEND = "https://extraneta-backend-production.up.railway.app";
-const BASE_URL = import.meta.env.VITE_BACKEND_URL
-  ? `${import.meta.env.VITE_BACKEND_URL}/api`
-  : import.meta.env.DEV
-    ? "/api"
-    : `${PRODUCTION_BACKEND}/api`;
+const BASE_URL = "/api";
 
 class ApiError extends Error {
   constructor(public status: number, message: string) {
@@ -39,43 +31,6 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   return resp.json();
 }
 
-// ── Hotels ────────────────────────────────────────────────────────────────────
-
-export const hotels = {
-  list: () => request<Hotel[]>("/hotels"),
-  get: (id: string) => request<Hotel>(`/hotels/${id}`),
-  create: (data: Partial<Hotel>) =>
-    request<Hotel>("/hotels", { method: "POST", body: JSON.stringify(data) }),
-  update: (id: string, data: Partial<Hotel>) =>
-    request<Hotel>(`/hotels/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
-  delete: (id: string) =>
-    request<void>(`/hotels/${id}`, { method: "DELETE" }),
-
-  members: (id: string) => request<HotelMember[]>(`/hotels/${id}/members`),
-  invite: (id: string, email: string, role: UserRole) =>
-    request<{ invite_url: string; token: string }>(
-      `/hotels/${id}/invite`,
-      { method: "POST", body: JSON.stringify({ email, role }) },
-    ),
-};
-
-// ── Bookings ──────────────────────────────────────────────────────────────────
-
-export interface BookingFilters {
-  source_ota?: string[];
-  payment_status?: string[];
-  booking_status?: string[];
-  check_in_from?: string;
-  check_in_to?: string;
-  guest_name?: string;
-  booking_id_ota?: string;
-  is_anomaly?: boolean;
-  page?: number;
-  page_size?: number;
-  sort_by?: string;
-  sort_desc?: boolean;
-}
-
 function toQuery(params: Record<string, unknown>): string {
   const parts: string[] = [];
   for (const [k, v] of Object.entries(params)) {
@@ -89,68 +44,95 @@ function toQuery(params: Record<string, unknown>): string {
   return parts.length ? `?${parts.join("&")}` : "";
 }
 
-export const bookings = {
-  list: (hotelId: string, filters: BookingFilters = {}) =>
-    request<BookingListResponse>(`/hotels/${hotelId}/bookings${toQuery(filters as Record<string, unknown>)}`),
+// Hotels
+export const hotels = {
+  list: () => request<Hotel[]>("/hotels"),
+  create: (data: { name: string; address?: string }) =>
+    request<Hotel>("/hotels", { method: "POST", body: JSON.stringify(data) }),
+  update: (id: number, data: { name?: string; address?: string }) =>
+    request<Hotel>(`/hotels/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
+  delete: (id: number) =>
+    request<void>(`/hotels/${id}`, { method: "DELETE" }),
 };
 
-// ── Analytics ────────────────────────────────────────────────────────────────
-
-export interface AnalyticsParams {
+// Dashboard
+export interface DashboardParams {
+  hotel_id?: number;
+  period?: string;
   date_from?: string;
   date_to?: string;
-  compare_from?: string;
-  compare_to?: string;
-  granularity?: "month" | "week";
 }
 
-export const analytics = {
-  summary: (hotelId: string, params: AnalyticsParams = {}) =>
-    request<SummaryMetrics>(`/hotels/${hotelId}/analytics/summary${toQuery(params)}`),
-  channels: (hotelId: string, params: AnalyticsParams = {}) =>
-    request<ChannelMetrics[]>(`/hotels/${hotelId}/analytics/channels${toQuery(params)}`),
-  timeSeries: (hotelId: string, params: AnalyticsParams = {}) =>
-    request<TimeSeriesPoint[]>(`/hotels/${hotelId}/analytics/time-series${toQuery(params)}`),
-  anomalies: (hotelId: string, params: AnalyticsParams = {}) =>
-    request<AnomalySummary>(`/hotels/${hotelId}/analytics/anomalies${toQuery(params)}`),
+export const dashboard = {
+  get: (params: DashboardParams = {}) =>
+    request<DashboardData>(`/dashboard${toQuery(params as Record<string, unknown>)}`),
 };
 
-// ── Uploads ───────────────────────────────────────────────────────────────────
+// Bookings
+export interface BookingFilters {
+  hotel_id?: number;
+  page?: number;
+  limit?: number;
+  ota?: string;
+  status?: string;
+  date_from?: string;
+  date_to?: string;
+  is_anomaly?: boolean;
+  guest?: string;
+}
 
+export const bookings = {
+  list: (filters: BookingFilters = {}) =>
+    request<BookingListResponse>(`/bookings${toQuery(filters as Record<string, unknown>)}`),
+  exportUrl: (filters: BookingFilters = {}) =>
+    `${BASE_URL}/bookings/export${toQuery(filters as Record<string, unknown>)}`,
+};
+
+// Channels
+export interface ChannelsParams {
+  hotel_id?: number;
+  period?: string;
+  date_from?: string;
+  date_to?: string;
+}
+
+export const channels = {
+  list: (params: ChannelsParams = {}) =>
+    request<ChannelMetrics[]>(`/channels${toQuery(params as Record<string, unknown>)}`),
+};
+
+// Uploads
 export const uploads = {
-  list: (hotelId: string) => request<Upload[]>(`/hotels/${hotelId}/uploads`),
-  get: (hotelId: string, uploadId: string) =>
-    request<Upload>(`/hotels/${hotelId}/uploads/${uploadId}`),
-
-  create: (
-    hotelId: string,
-    file: File,
-    source_ota: OTASource,
-    document_type: DocumentType,
-    period_start?: string,
-    period_end?: string,
-  ) => {
+  list: (hotel_id?: number) =>
+    request<Upload[]>(`/uploads${hotel_id ? `?hotel_id=${hotel_id}` : ""}`),
+  upload: (file: File, ota: string, hotel_id?: number) => {
     const fd = new FormData();
     fd.append("file", file);
-    fd.append("source_ota", source_ota);
-    fd.append("document_type", document_type);
-    if (period_start) fd.append("report_period_start", period_start);
-    if (period_end) fd.append("report_period_end", period_end);
-    return request<Upload>(`/hotels/${hotelId}/uploads`, { method: "POST", body: fd });
+    fd.append("ota", ota);
+    if (hotel_id) fd.append("hotel_id", String(hotel_id));
+    return request<Upload>("/upload", { method: "POST", body: fd });
   },
-
-  delete: (hotelId: string, uploadId: string) =>
-    request<void>(`/hotels/${hotelId}/uploads/${uploadId}`, { method: "DELETE" }),
-
-  reimport: (hotelId: string, uploadId: string) =>
-    request<Upload>(`/hotels/${hotelId}/uploads/${uploadId}/reimport`, { method: "POST" }),
+  delete: (id: number) =>
+    request<void>(`/uploads/${id}`, { method: "DELETE" }),
 };
 
-// ── Reports ───────────────────────────────────────────────────────────────────
-
+// Reports
 export const reports = {
-  excelUrl: (hotelId: string, dateFrom: string, dateTo: string) =>
-    `/api/hotels/${hotelId}/reports/excel?date_from=${dateFrom}&date_to=${dateTo}`,
-  pdfUrl: (hotelId: string, dateFrom: string, dateTo: string) =>
-    `/api/hotels/${hotelId}/reports/pdf?date_from=${dateFrom}&date_to=${dateTo}`,
+  excelUrl: (params: { hotel_id?: number; date_from?: string; date_to?: string }) =>
+    `${BASE_URL}/reports/excel${toQuery(params as Record<string, unknown>)}`,
+  pdfUrl: (params: { hotel_id?: number; date_from?: string; date_to?: string }) =>
+    `${BASE_URL}/reports/pdf${toQuery(params as Record<string, unknown>)}`,
+};
+
+// Settings
+export const settings = {
+  getCommissions: (hotel_id?: number) =>
+    request<CommissionSetting[]>(`/settings/commissions${hotel_id ? `?hotel_id=${hotel_id}` : ""}`),
+  updateCommissions: (updates: { ota: string; expected_rate: number }[], hotel_id?: number) =>
+    request<{ ok: boolean }>(`/settings/commissions${hotel_id ? `?hotel_id=${hotel_id}` : ""}`, {
+      method: "PUT",
+      body: JSON.stringify(updates),
+    }),
+  clearData: (hotel_id?: number) =>
+    request<void>(`/settings/data${hotel_id ? `?hotel_id=${hotel_id}` : ""}`, { method: "DELETE" }),
 };

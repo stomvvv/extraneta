@@ -1,169 +1,156 @@
 """
-Seed script — inserts demo user, hotel, and 23 Yandex bookings.
+Seed script — inserts demo hotel with 7 OTA × 5+ bookings.
 Idempotent: safe to run multiple times.
 
 Usage:
-    DATABASE_URL=postgresql+asyncpg://... python3 seed.py
+    cd backend && python seed.py
 """
-import asyncio
 import os
-import uuid
+import sys
+import random
 from decimal import Decimal
-from datetime import date
+from datetime import date, timedelta
 
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy import select, text
+# Add backend dir to path
+sys.path.insert(0, os.path.dirname(__file__))
 
-# ── resolve DATABASE_URL ────────────────────────────────────────────────────
-def _db_url() -> str:
-    url = (
-        os.getenv("DATABASE_URL")
-        or os.getenv("DATABASE_PRIVATE_URL")
-        or os.getenv("POSTGRESQL_URL")
-        or ""
-    )
-    for prefix, replacement in [
-        ("postgresql://", "postgresql+asyncpg://"),
-        ("postgres://",   "postgresql+asyncpg://"),
-    ]:
-        if url.startswith(prefix):
-            return url.replace(prefix, replacement, 1)
-    if not url:
-        raise RuntimeError("Set DATABASE_URL env var before running seed.py")
-    return url
+from database import SessionLocal, engine, Base  # noqa: E402
+import models  # noqa: F401, E402
+from models.hotel import Hotel
+from models.booking import Booking
+from models.commission_setting import CommissionSetting
 
-DATABASE_URL = _db_url()
+HOTEL_NAME = "Гостиница Центральная"
 
-# ── import app models (must be on PYTHONPATH) ───────────────────────────────
-from app.core.database import Base  # noqa: E402
-import app.models  # noqa: F401, E402 — registers all models
-from app.models.user import User, UserRole
-from app.models.hotel import Hotel, HotelMember
-from app.models.booking import Booking
+OTA_RATES = {
+    "yandex": 18.0,
+    "ostrovok": 15.0,
+    "bronevic": 12.0,
+    "tinkoff": 20.0,
+    "2gis": 10.0,
+    "101hotel": 15.0,
+    "academservis": 12.0,
+}
 
-DEMO_EMAIL   = "demo@extraneta.ru"
-HOTEL_ID     = uuid.UUID("8c74c8c9-10e6-4bf9-ad79-54a0ac83a833")
-HOTEL_NAME   = "Тестовый Отель"
-DEMO_USER_ID = uuid.UUID("05870daf-77d7-4a69-adee-0be7c6c32c8d")
-
-# ── booking data ────────────────────────────────────────────────────────────
-BOOKINGS = [
-    ("YA-1026-6263-5731", "ольга емельянова",     date(2024,12,30), date(2025,1,1),  2, 5616,  15, "paid",     "confirmed"),
-    ("YA-3776-7827-1554", "Серафима Корякина",    date(2024,12,30), date(2025,1,3),  4, 31248, 15, "paid",     "confirmed"),
-    ("YA-0920-7219-9819", "Екатерина Погодина",   date(2024,12,31), date(2025,1,2),  2, 19530, 15, "paid",     "confirmed"),
-    ("YA-4456-1726-4936", "Роман Багаутдинов",    date(2024,12,31), date(2025,1,2),  2, 15624, 15, "paid",     "confirmed"),
-    ("YA-8901-4829-1381", "Денис Дубинский",      date(2024,12,31), date(2025,1,2),  2, 28644, 15, "paid",     "confirmed"),
-    ("YA-4671-0125-4079", "Тимур Цзинь",          date(2024,12,31), date(2025,1,3),  3, 8424,  15, "paid",     "confirmed"),
-    ("YA-6442-5515-5535", "Мадина Адигамова",     date(2025,1,2),   date(2025,1,3),  1, 1404,  15, "paid",     "confirmed"),
-    ("YA-9639-5402-3454", "Валентина Лазарева",   date(2025,1,2),   date(2025,1,3),  1, 4680,  15, "paid",     "confirmed"),
-    ("YA-2839-0527-8988", "Владимир Измайлов",    date(2025,1,2),   date(2025,1,4),  2, 11718, 15, "paid",     "confirmed"),
-    ("YA-4804-8526-2251", "Сергей Слепенькин",    date(2025,1,3),   date(2025,1,6),  3, 8424,  15, "paid",     "confirmed"),
-    ("YA-2161-2550-5641", "Анастасия Пальчикова", date(2025,1,3),   date(2025,1,5),  2, 5616,  15, "paid",     "confirmed"),
-    ("YA-4978-8383-3865", "Елизавета Измайлова",  date(2025,1,3),   date(2025,1,5),  2, 9360,  15, "paid",     "confirmed"),
-    ("YA-2021-9330-2528", "Лариса Тихонова",      date(2025,1,4),   date(2025,1,6),  2, 15624, 15, "paid",     "confirmed"),
-    ("YA-9970-1146-4375", "Денис Савченко",       date(2025,1,4),   date(2025,1,5),  1, 7812,  15, "paid",     "confirmed"),
-    ("YA-6986-7834-2260", "Юлия Федотова",        date(2025,1,4),   date(2025,1,5),  1, 7812,  15, "paid",     "confirmed"),
-    ("YA-0075-7760-1963", "Евгений Ладыгин",      date(2025,1,4),   date(2025,1,5),  1, 2808,  15, "paid",     "confirmed"),
-    ("YA-0579-2896-4276", "Альберт Якупов",       date(2025,1,4),   date(2025,1,6),  2, 15624, 15, "paid",     "confirmed"),
-    ("YA-0042-0955-5133", "Виктория Хагеман",     date(2025,1,4),   date(2025,1,6),  2, 15624, 15, "paid",     "confirmed"),
-    ("YA-1111-2222-3333", "Иванов Иван",          date(2026,5,10),  date(2026,5,13), 3, 12000, 15, "paid",     "confirmed"),
-    ("YA-2222-3333-4444", "Петрова Мария",        date(2026,5,12),  date(2026,5,15), 3, 9000,  15, "paid",     "confirmed"),
-    ("YA-3333-4444-5555", "Сидоров Алексей",      date(2026,5,15),  date(2026,5,18), 3, -6000, 15, "refunded", "cancelled"),
-    ("YA-4444-5555-6666", "Козлова Анна",         date(2026,5,20),  date(2026,5,23), 3, 15000, 15, "paid",     "confirmed"),
-    ("YA-5555-6666-7777", "Новиков Дмитрий",      date(2026,5,25),  date(2026,5,28), 3, 8500,  15, "paid",     "confirmed"),
+GUESTS = [
+    "Иванов Иван", "Петрова Мария", "Сидоров Алексей", "Козлова Анна",
+    "Новиков Дмитрий", "Морозова Елена", "Волков Андрей", "Соколова Наталья",
+    "Лебедев Сергей", "Попова Ольга", "Кузнецов Игорь", "Зайцева Татьяна",
+    "Медведев Павел", "Степанова Юлия", "Орлов Виктор",
 ]
 
 
-async def seed():
-    engine = create_async_engine(DATABASE_URL, echo=False)
-    async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+def make_bookings(hotel_id: int) -> list[Booking]:
+    today = date.today()
+    bookings = []
+    anomaly_count = 0
 
-    async with async_session() as session:
-        # ── demo user ───────────────────────────────────────────────────────
-        result = await session.execute(select(User).where(User.email == DEMO_EMAIL))
-        user = result.scalar_one_or_none()
-        if not user:
-            import bcrypt
-            hashed = bcrypt.hashpw(b"demo1234", bcrypt.gensalt()).decode()
-            user = User(
-                id=DEMO_USER_ID,
-                email=DEMO_EMAIL,
-                hashed_password=hashed,
-                full_name="Demo User",
-                is_active=True,
-                is_verified=True,
-            )
-            session.add(user)
-            await session.flush()
-            print(f"  created user {DEMO_EMAIL}")
-        else:
-            user.id = DEMO_USER_ID  # ensure ID matches for FK
-            print(f"  user {DEMO_EMAIL} already exists")
+    for ota, expected_rate in OTA_RATES.items():
+        for i in range(6):  # 6 bookings per OTA
+            check_in = today - timedelta(days=random.randint(10, 180))
+            nights = random.randint(1, 5)
+            check_out = check_in + timedelta(days=nights)
+            gross = Decimal(str(random.randint(3000, 25000)))
 
-        # ── hotel ───────────────────────────────────────────────────────────
-        result = await session.execute(select(Hotel).where(Hotel.id == HOTEL_ID))
-        hotel = result.scalar_one_or_none()
-        if not hotel:
-            hotel = Hotel(id=HOTEL_ID, name=HOTEL_NAME)
-            session.add(hotel)
-            await session.flush()
-            print(f"  created hotel '{HOTEL_NAME}'")
-        else:
-            print(f"  hotel '{HOTEL_NAME}' already exists")
+            # Determine status
+            r = random.random()
+            if r < 0.70:
+                status = "confirmed"
+            elif r < 0.90:
+                status = "cancelled"
+            else:
+                status = "no_show"
 
-        # ── hotel member ────────────────────────────────────────────────────
-        result = await session.execute(
-            select(HotelMember).where(
-                HotelMember.hotel_id == HOTEL_ID,
-                HotelMember.user_id == user.id,
-            )
-        )
-        if not result.scalar_one_or_none():
-            session.add(HotelMember(hotel_id=HOTEL_ID, user_id=user.id, role=UserRole.owner))
-            print("  created hotel membership")
+            # Commission rate (sometimes anomalous)
+            if anomaly_count < 2 and i == 4:
+                # Anomaly: wrong commission rate
+                rate = Decimal(str(expected_rate + 5.0))
+                anomaly_count += 1
+            elif anomaly_count < 3 and status == "cancelled" and i == 5:
+                # Anomaly: cancelled but commission not returned
+                rate = Decimal(str(expected_rate))
+                anomaly_count += 1
+            else:
+                rate = Decimal(str(expected_rate))
 
-        # ── bookings ─────────────────────────────────────────────────────
-        inserted = 0
-        for (ota_id, guest, check_in, check_out, nights,
-             gross, rate_pct, pay_status, book_status) in BOOKINGS:
-            result = await session.execute(
-                select(Booking).where(
-                    Booking.hotel_id == HOTEL_ID,
-                    Booking.booking_id_ota == ota_id,
-                )
-            )
-            if result.scalar_one_or_none():
-                continue
-            gross_d = Decimal(str(gross))
-            rate_d  = Decimal(str(rate_pct)) / 100
-            commission = (gross_d * rate_d).quantize(Decimal("0.01"))
-            net = gross_d - commission
-            session.add(Booking(
-                hotel_id=HOTEL_ID,
-                source_ota="yandex",
-                booking_id_ota=ota_id,
-                guest_name=guest,
+            commission = (gross * rate / Decimal("100")).quantize(Decimal("0.01"))
+            net = gross - commission
+
+            has_anomaly = False
+            anomaly_reason = ""
+            if abs(float(rate) - expected_rate) > 1.0:
+                has_anomaly = True
+                anomaly_reason = f"Комиссия {rate}% ≠ ожидаемой {expected_rate}%"
+            if status == "cancelled" and float(commission) > 0 and not anomaly_reason:
+                has_anomaly = True
+                anomaly_reason = "Отменённая бронь, но комиссия не возвращена"
+
+            bookings.append(Booking(
+                hotel_id=hotel_id,
+                source_ota=ota,
+                booking_id_ota=f"{ota.upper()}-SEED-{i+1:03d}-{hotel_id}",
+                guest_name=random.choice(GUESTS),
                 check_in=check_in,
                 check_out=check_out,
                 nights=nights,
-                gross_amount=gross_d,
-                ota_commission_rate=rate_d,
+                gross_amount=gross,
+                ota_commission_rate=rate,
                 ota_commission_amount=commission,
                 net_amount=net,
-                currency="RUB",
-                payment_status=pay_status,
-                booking_status=book_status,
-                is_anomaly=(gross < 0),
+                booking_status=status,
+                payment_status="paid" if status != "cancelled" else "refunded",
+                has_anomaly=has_anomaly,
+                anomaly_reason=anomaly_reason,
+                raw_row={},
             ))
-            inserted += 1
 
-        await session.commit()
-        print(f"  inserted {inserted} new bookings (skipped {len(BOOKINGS) - inserted} existing)")
+    return bookings
 
-    await engine.dispose()
-    print("Seed complete.")
+
+def seed():
+    # Ensure tables exist
+    Base.metadata.create_all(bind=engine)
+
+    db = SessionLocal()
+    try:
+        # Hotel
+        hotel = db.query(Hotel).filter(Hotel.name == HOTEL_NAME).first()
+        if not hotel:
+            hotel = Hotel(name=HOTEL_NAME, address="г. Москва, ул. Центральная, 1")
+            db.add(hotel)
+            db.flush()
+            print(f"  Created hotel '{HOTEL_NAME}' (id={hotel.id})")
+        else:
+            print(f"  Hotel '{HOTEL_NAME}' already exists (id={hotel.id})")
+
+        # Commission settings
+        existing_cs = db.query(CommissionSetting).filter(
+            CommissionSetting.hotel_id == hotel.id
+        ).count()
+        if existing_cs == 0:
+            for ota, rate in OTA_RATES.items():
+                db.add(CommissionSetting(hotel_id=hotel.id, ota=ota, expected_rate=rate))
+            print("  Created commission settings for all OTAs")
+
+        # Bookings — skip if already seeded
+        existing = db.query(Booking).filter(
+            Booking.hotel_id == hotel.id,
+            Booking.booking_id_ota.like("%-SEED-%"),
+        ).count()
+        if existing > 0:
+            print(f"  Seed bookings already exist ({existing}), skipping")
+        else:
+            bookings = make_bookings(hotel.id)
+            for b in bookings:
+                db.add(b)
+            print(f"  Inserted {len(bookings)} seed bookings ({len(OTA_RATES)} OTAs × 6)")
+
+        db.commit()
+        print("Seed complete.")
+
+    finally:
+        db.close()
 
 
 if __name__ == "__main__":
-    asyncio.run(seed())
+    seed()

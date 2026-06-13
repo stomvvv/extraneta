@@ -79,20 +79,30 @@ export function getPresetDates(preset: PresetPeriod): { from: Date; to: Date } {
 export const OTA_LABELS: Record<string, string> = {
   yandex: "Яндекс Путешествия",
   ostrovok: "Ostrovok.ru",
-  bronevoy: "Броневик",
+  bronevic: "Броневик",
   tinkoff: "Тинькофф",
   "2gis": "2ГИС",
-  hotel101: "101отель",
+  "101hotel": "101отель",
   academservis: "Academservis",
+};
+
+export const OTA_BADGE_CLASSES: Record<string, string> = {
+  yandex: "bg-red-100 text-red-800",
+  ostrovok: "bg-blue-100 text-blue-800",
+  bronevic: "bg-orange-100 text-orange-800",
+  tinkoff: "bg-yellow-100 text-yellow-800",
+  "2gis": "bg-green-100 text-green-800",
+  "101hotel": "bg-purple-100 text-purple-800",
+  academservis: "bg-gray-100 text-gray-800",
 };
 
 export const OTA_COLORS: Record<string, string> = {
   yandex: "#FF0000",
   ostrovok: "#0066CC",
-  bronevoy: "#FF6B00",
+  bronevic: "#FF6B00",
   tinkoff: "#FFDD2D",
   "2gis": "#00B956",
-  hotel101: "#9B59B6",
+  "101hotel": "#9B59B6",
   academservis: "#1ABC9C",
 };
 

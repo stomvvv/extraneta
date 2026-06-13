@@ -11,7 +11,7 @@ echo "==> BACKEND_URL=$BACKEND_URL"
 sed \
   -e "s|\${PORT}|${PORT}|g" \
   -e "s|\${BACKEND_URL}|${BACKEND_URL}|g" \
-  /etc/nginx/templates/default.conf.template \
+  /etc/nginx/conf.d/default.conf.template \
   > /etc/nginx/conf.d/default.conf
 
 echo "==> Generated nginx config:"

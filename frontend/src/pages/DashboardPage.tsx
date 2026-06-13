@@ -6,11 +6,10 @@ import {
 } from "recharts";
 import { DollarSign, TrendingDown, BookOpen, CreditCard, Upload, AlertTriangle, Building2, Plus, Loader2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { hotels as hotelsApi } from "@/lib/api";
+import { dashboard as dashboardApi, hotels as hotelsApi } from "@/lib/api";
 import { Input } from "@/components/ui/input";
 import { toast } from "@/hooks/use-toast";
 
-import { analytics } from "@/lib/api";
 import { keys } from "@/lib/query-client";
 import { useHotel } from "@/hooks/use-hotel";
 import {
@@ -21,64 +20,46 @@ import { PeriodSelector } from "@/components/app/dashboard/PeriodSelector";
 import { ChannelTable } from "@/components/app/dashboard/ChannelTable";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 
 export default function DashboardPage() {
   const { currentHotel, setCurrentHotelId } = useHotel();
   const navigate = useNavigate();
 
-  const defaultPeriod = getPresetDates("current_month");
+  const defaultPeriod = getPresetDates("last_30");
   const [dateFrom, setDateFrom] = useState(toISODate(defaultPeriod.from));
   const [dateTo, setDateTo] = useState(toISODate(defaultPeriod.to));
 
-  const params = { date_from: dateFrom, date_to: dateTo };
+  const params = {
+    hotel_id: currentHotel?.id,
+    date_from: dateFrom,
+    date_to: dateTo,
+  };
   const enabled = !!currentHotel;
 
-  const { data: summary, isLoading: summaryLoading } = useQuery({
-    queryKey: keys.analytics.summary(currentHotel?.id ?? "", params),
-    queryFn: () => analytics.summary(currentHotel!.id, params),
+  const { data, isLoading } = useQuery({
+    queryKey: keys.dashboard.data(currentHotel?.id ?? null, params),
+    queryFn: () => dashboardApi.get(params),
     enabled,
   });
 
-  const { data: channels = [], isLoading: channelsLoading } = useQuery({
-    queryKey: keys.analytics.channels(currentHotel?.id ?? "", params),
-    queryFn: () => analytics.channels(currentHotel!.id, params),
-    enabled,
-  });
-
-  const { data: timeSeries = [], isLoading: tsLoading } = useQuery({
-    queryKey: keys.analytics.timeSeries(currentHotel?.id ?? "", params),
-    queryFn: () => analytics.timeSeries(currentHotel!.id, params),
-    enabled,
-  });
-
-  const { data: anomalies } = useQuery({
-    queryKey: keys.analytics.anomalies(currentHotel?.id ?? "", params),
-    queryFn: () => analytics.anomalies(currentHotel!.id, params),
-    enabled,
-  });
-
-  const hasData = (summary?.total_bookings ?? 0) > 0;
-  const avgCommissionRate = summary ? parseFloat(summary.commission_rate_pct) : 0;
+  const kpi = data?.kpi;
+  const timeSeries = data?.time_series ?? [];
+  const channels = data?.channels ?? [];
+  const hasData = (kpi?.total_bookings ?? 0) > 0;
 
   const tsChartData = timeSeries.map((p) => ({
     period: p.period,
-    "Валовая": parseFloat(p.gross_revenue),
-    "Комиссии": parseFloat(p.commission_amount),
-    "Чистая": parseFloat(p.net_revenue),
+    "Валовая": p.gross_revenue,
+    "Комиссии": p.commission_amount,
+    "Чистая": p.net_revenue,
   }));
 
   const pieData = channels.map((ch) => ({
     name: OTA_LABELS[ch.source_ota] || ch.source_ota,
-    value: parseFloat(ch.gross_revenue),
+    value: ch.gross_revenue,
     ota: ch.source_ota,
   }));
-
-  const handlePeriodChange = (from: string, to: string) => {
-    setDateFrom(from);
-    setDateTo(to);
-  };
 
   const qc = useQueryClient();
   const [hotelName, setHotelName] = useState("");
@@ -136,21 +117,19 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold">{currentHotel.name}</h1>
           <p className="text-muted-foreground text-sm mt-0.5">Финансовая аналитика по OTA-каналам</p>
         </div>
-        <PeriodSelector onChange={handlePeriodChange} />
+        <PeriodSelector onChange={(from, to) => { setDateFrom(from); setDateTo(to); }} />
       </div>
 
-      {/* Anomaly banner */}
-      {anomalies && anomalies.total_anomalies > 0 && (
+      {kpi && kpi.anomaly_count > 0 && (
         <div className="flex items-center gap-3 rounded-lg border border-yellow-200 bg-yellow-50 px-4 py-3">
           <AlertTriangle className="h-4 w-4 text-yellow-600 shrink-0" />
           <p className="text-sm text-yellow-800">
-            Обнаружено <strong>{anomalies.total_anomalies}</strong> аномалий за период.{" "}
+            Обнаружено <strong>{kpi.anomaly_count}</strong> аномалий за период.
           </p>
           <Button variant="outline" size="sm" className="ml-auto h-7 text-xs" onClick={() => navigate("/bookings?is_anomaly=true")}>
             Просмотреть
@@ -158,8 +137,7 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* Empty state */}
-      {!hasData && !summaryLoading && (
+      {!hasData && !isLoading && (
         <div className="rounded-xl border-2 border-dashed border-muted-foreground/20 bg-muted/30 p-12 text-center">
           <Upload className="h-10 w-10 text-muted-foreground mx-auto mb-4" />
           <h3 className="font-semibold text-lg">Нет данных за выбранный период</h3>
@@ -172,56 +150,50 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* KPI Cards */}
-      {(hasData || summaryLoading) && (
+      {(hasData || isLoading) && (
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
           <MetricCard
             title="Чистая выручка"
-            value={summary ? formatRub(summary.net_revenue) : "—"}
-            change={summary?.net_revenue_change_pct}
+            value={kpi ? formatRub(kpi.net_revenue) : "—"}
             icon={DollarSign}
             iconColor="text-green-600"
-            loading={summaryLoading}
+            loading={isLoading}
             large
           />
           <MetricCard
             title="Комиссии OTA"
-            value={summary ? formatRub(summary.total_commission) : "—"}
-            subtitle={summary ? `${formatPct(summary.commission_rate_pct)} от выручки` : undefined}
+            value={kpi ? formatRub(kpi.total_commission) : "—"}
+            subtitle={kpi ? `${formatPct(kpi.commission_rate_pct)} от выручки` : undefined}
             icon={TrendingDown}
             iconColor="text-red-500"
-            loading={summaryLoading}
+            loading={isLoading}
           />
           <MetricCard
             title="Бронирования"
-            value={summary ? String(summary.total_bookings) : "—"}
-            subtitle={summary ? `${summary.confirmed_bookings} подтверждено, ${summary.cancelled_bookings} отменено` : undefined}
-            change={summary?.bookings_change_pct}
+            value={kpi ? String(kpi.total_bookings) : "—"}
+            subtitle={kpi ? `${kpi.confirmed_bookings} подтверждено, ${kpi.cancelled_bookings} отменено` : undefined}
             icon={BookOpen}
             iconColor="text-blue-600"
-            loading={summaryLoading}
+            loading={isLoading}
           />
           <MetricCard
             title="Средний чек"
-            value={summary ? formatRub(summary.avg_booking_value) : "—"}
-            subtitle={summary?.occupancy_pct ? `Загрузка: ${parseFloat(summary.occupancy_pct).toFixed(1)}%` : undefined}
+            value={kpi ? formatRub(kpi.avg_booking_value) : "—"}
             icon={CreditCard}
             iconColor="text-purple-600"
-            loading={summaryLoading}
+            loading={isLoading}
           />
         </div>
       )}
 
-      {/* Charts row */}
-      {(hasData || summaryLoading) && (
+      {(hasData || isLoading) && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          {/* Stacked bar: revenue vs commissions */}
           <Card className="lg:col-span-2">
             <CardHeader className="pb-2">
               <CardTitle className="text-base">Выручка и комиссии</CardTitle>
             </CardHeader>
             <CardContent>
-              {tsLoading ? (
+              {isLoading ? (
                 <Skeleton className="h-64 w-full" />
               ) : (
                 <ResponsiveContainer width="100%" height={260}>
@@ -239,13 +211,12 @@ export default function DashboardPage() {
             </CardContent>
           </Card>
 
-          {/* Pie: channel share */}
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-base">Доля каналов</CardTitle>
             </CardHeader>
             <CardContent>
-              {channelsLoading ? (
+              {isLoading ? (
                 <Skeleton className="h-64 w-full" />
               ) : pieData.length > 0 ? (
                 <ResponsiveContainer width="100%" height={260}>
@@ -275,8 +246,7 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* Net revenue line chart */}
-      {(hasData || summaryLoading) && timeSeries.length > 1 && (
+      {(hasData || isLoading) && timeSeries.length > 1 && (
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-base">Динамика чистой выручки</CardTitle>
@@ -295,14 +265,13 @@ export default function DashboardPage() {
         </Card>
       )}
 
-      {/* Channel breakdown table */}
-      {(hasData || channelsLoading) && (
+      {(hasData || isLoading) && (
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-base">Сравнение каналов</CardTitle>
           </CardHeader>
           <CardContent>
-            <ChannelTable data={channels} loading={channelsLoading} avgCommissionRate={avgCommissionRate} />
+            <ChannelTable data={channels as any} loading={isLoading} avgCommissionRate={kpi?.commission_rate_pct ?? 0} />
           </CardContent>
         </Card>
       )}

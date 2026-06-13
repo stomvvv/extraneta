@@ -4,6 +4,5 @@ dockerfilePath = "frontend/Dockerfile"
 dockerContextPath = "frontend"
 
 [deploy]
-healthcheckPath = "/"
-healthcheckTimeout = 60
+# No healthcheck for frontend — nginx serves static files, not a web API
 restartPolicyType = "ON_FAILURE"

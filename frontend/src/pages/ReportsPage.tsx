@@ -10,10 +10,9 @@ import { Button } from "@/components/ui/button";
 
 export default function ReportsPage() {
   const { currentHotel } = useHotel();
-  const defaultPeriod = getPresetDates("current_month");
+  const defaultPeriod = getPresetDates("last_30");
   const [dateFrom, setDateFrom] = useState(toISODate(defaultPeriod.from));
   const [dateTo, setDateTo] = useState(toISODate(defaultPeriod.to));
-
   const [downloading, setDownloading] = useState<string | null>(null);
 
   if (!currentHotel) return null;
@@ -40,6 +39,8 @@ export default function ReportsPage() {
     }
   };
 
+  const params = { hotel_id: currentHotel.id, date_from: dateFrom, date_to: dateTo };
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -48,7 +49,6 @@ export default function ReportsPage() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {/* Excel report */}
         <Card className="hover:shadow-md transition-shadow">
           <CardHeader>
             <div className="flex items-center gap-3">
@@ -57,33 +57,33 @@ export default function ReportsPage() {
               </div>
               <div>
                 <CardTitle className="text-base">Excel-отчёт (.xlsx)</CardTitle>
-                <CardDescription>Полная детализация с формулами</CardDescription>
+                <CardDescription>Полная детализация</CardDescription>
               </div>
             </div>
           </CardHeader>
           <CardContent>
             <ul className="text-sm text-muted-foreground space-y-1 mb-4">
-              <li>• Лист 1: Сводные показатели</li>
-              <li>• Лист 2: Разбивка по каналам</li>
-              <li>• Лист 3: Все бронирования</li>
-              <li>• Лист 4: Аномалии и флаги</li>
+              <li>• Лист 1: Сводка по OTA</li>
+              <li>• Лист 2: Все бронирования</li>
+              <li>• Лист 3: Аномалии</li>
             </ul>
             <Button
               className="w-full"
               variant="outline"
               disabled={!!downloading}
               onClick={() => handleDownload(
-                reports.excelUrl(currentHotel.id, dateFrom, dateTo),
+                reports.excelUrl(params),
                 `extraneta_${dateFrom}_${dateTo}.xlsx`,
               )}
             >
-              {downloading?.endsWith(".xlsx") ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Download className="h-4 w-4 mr-2" />}
+              {downloading?.endsWith(".xlsx")
+                ? <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                : <Download className="h-4 w-4 mr-2" />}
               Скачать Excel
             </Button>
           </CardContent>
         </Card>
 
-        {/* PDF report */}
         <Card className="hover:shadow-md transition-shadow">
           <CardHeader>
             <div className="flex items-center gap-3">
@@ -98,9 +98,8 @@ export default function ReportsPage() {
           </CardHeader>
           <CardContent>
             <ul className="text-sm text-muted-foreground space-y-1 mb-4">
-              <li>• Ключевые показатели за период</li>
-              <li>• Таблица по каналам</li>
-              <li>• Топ-5 броней по стоимости</li>
+              <li>• KPI за период</li>
+              <li>• Разбивка по каналам</li>
               <li>• Выявленные аномалии</li>
             </ul>
             <Button
@@ -108,11 +107,13 @@ export default function ReportsPage() {
               variant="outline"
               disabled={!!downloading}
               onClick={() => handleDownload(
-                reports.pdfUrl(currentHotel.id, dateFrom, dateTo),
+                reports.pdfUrl(params),
                 `extraneta_${dateFrom}_${dateTo}.pdf`,
               )}
             >
-              {downloading?.endsWith(".pdf") ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Download className="h-4 w-4 mr-2" />}
+              {downloading?.endsWith(".pdf")
+                ? <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                : <Download className="h-4 w-4 mr-2" />}
               Скачать PDF
             </Button>
           </CardContent>
